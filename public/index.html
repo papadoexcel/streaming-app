@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Transmissão Ao Vivo</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #111; color: white; padding: 2rem; }
+    video { width: 100%; max-width: 480px; border-radius: 12px; margin-top: 20px; }
+    button { padding: 10px 20px; font-size: 1.2em; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Transmissão ao Vivo</h1>
+  <video id="preview" autoplay muted playsinline></video>
+  <br>
+  <button id="startBtn">Iniciar Transmissão</button>
+  <p id="status">Aguardando...</p>
+
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script>
+    const video = document.getElementById('preview');
+    const status = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+
+    let socket;
+
+    startBtn.onclick = async () => {
+      startBtn.disabled = true;
+      status.innerText = '🔴 Transmitindo ao vivo...';
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      video.srcObject = stream;
+
+      socket = io();
+
+      const recorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm; codecs=vp8'
+      });
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          event.data.arrayBuffer().then(buffer => {
+            socket.emit('video', Buffer.from(buffer));
+          });
+        }
+      };
+
+      recorder.start(100); // envia pacotes a cada 100ms
+    };
+  </script>
+</body>
+</html>
