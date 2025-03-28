@@ -4,17 +4,57 @@
   <meta charset="UTF-8">
   <title>Transmissão Ao Vivo</title>
   <style>
-    body { font-family: sans-serif; text-align: center; background: #111; color: white; padding: 2rem; }
-    video { width: 100%; max-width: 480px; border-radius: 12px; margin-top: 20px; }
-    select, button { padding: 10px 20px; font-size: 1em; margin: 10px; }
+    body {
+      background-color: #121212;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 1rem;
+    }
+
+    video {
+      width: 100%;
+      max-width: 480px;
+      margin-top: 20px;
+      border-radius: 12px;
+      border: 2px solid #444;
+    }
+
+    select, button {
+      padding: 10px 15px;
+      font-size: 1rem;
+      margin: 10px;
+      border-radius: 8px;
+      border: none;
+      outline: none;
+    }
+
+    button {
+      background-color: #ff2d55;
+      color: white;
+      cursor: pointer;
+    }
+
+    #status {
+      margin-top: 10px;
+      font-size: 1.1rem;
+      color: #ccc;
+    }
   </style>
 </head>
 <body>
   <h1>Transmissão ao Vivo</h1>
 
-  <select id="cameraSelect"></select>
-  <button onclick="listarCameras()">🔄 Atualizar Câmeras</button>
-  <br>
+  <div>
+    <select id="cameraSelect"></select>
+    <button onclick="listarCameras()">🔄 Atualizar Câmeras</button>
+  </div>
+
   <button id="startBtn">🎥 Iniciar Transmissão</button>
   <p id="status">Aguardando...</p>
 
@@ -27,51 +67,86 @@
     const startBtn = document.getElementById('startBtn');
     const cameraSelect = document.getElementById('cameraSelect');
 
-    let socket, recorder;
+    let socket = null;
+    let recorder = null;
+    let stream = null;
 
     async function listarCameras() {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
-      cameraSelect.innerHTML = '';
-      videoDevices.forEach(device => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        option.text = device.label || `Câmera ${cameraSelect.length + 1}`;
-        cameraSelect.appendChild(option);
-      });
+        cameraSelect.innerHTML = '';
+        videoDevices.forEach((device, index) => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.text = device.label || `Câmera ${index + 1}`;
+          cameraSelect.appendChild(option);
+        });
+      } catch (err) {
+        console.error('Erro ao listar câmeras:', err);
+        alert('Não foi possível acessar as câmeras. Verifique as permissões do navegador.');
+      }
     }
 
-    listarCameras();
+    async function iniciarStream(deviceId) {
+      try {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId } },
+          audio: false
+        });
+
+        video.srcObject = stream;
+
+        if (!socket) {
+          socket = io();
+          socket.on('connect', () => {
+            console.log('📡 Conectado ao servidor');
+          });
+        }
+
+        if (recorder) {
+          recorder.stop();
+        }
+
+        recorder = new MediaRecorder(stream, {
+          mimeType: 'video/webm; codecs=vp8'
+        });
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            event.data.arrayBuffer().then(buffer => {
+              socket.emit('video', Buffer.from(buffer));
+            });
+          }
+        };
+
+        recorder.start(100);
+        status.innerText = '🔴 Transmitindo ao vivo...';
+      } catch (err) {
+        console.error('Erro ao iniciar stream:', err);
+        alert('Erro ao iniciar a câmera. Verifique as permissões ou tente outro dispositivo.');
+        startBtn.disabled = false;
+      }
+    }
 
     startBtn.onclick = async () => {
       startBtn.disabled = true;
-      status.innerText = '🔴 Transmitindo ao vivo...';
-
-      const deviceId = cameraSelect.value;
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: deviceId } },
-        audio: false
-      });
-
-      video.srcObject = stream;
-
-      socket = io();
-
-      recorder = new MediaRecorder(stream, {
-        mimeType: 'video/webm; codecs=vp8'
-      });
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          event.data.arrayBuffer().then(buffer => {
-            socket.emit('video', Buffer.from(buffer));
-          });
-        }
-      };
-
-      recorder.start(100); // a cada 100ms
+      const selectedDeviceId = cameraSelect.value;
+      await iniciarStream(selectedDeviceId);
     };
+
+    cameraSelect.onchange = () => {
+      const selectedDeviceId = cameraSelect.value;
+      iniciarStream(selectedDeviceId);
+    };
+
+    // Inicializa lista ao carregar a página
+    listarCameras();
   </script>
 </body>
 </html>
