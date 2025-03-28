@@ -6,34 +6,59 @@
   <style>
     body { font-family: sans-serif; text-align: center; background: #111; color: white; padding: 2rem; }
     video { width: 100%; max-width: 480px; border-radius: 12px; margin-top: 20px; }
-    button { padding: 10px 20px; font-size: 1.2em; margin-top: 10px; }
+    select, button { padding: 10px 20px; font-size: 1em; margin: 10px; }
   </style>
 </head>
 <body>
   <h1>Transmissão ao Vivo</h1>
-  <video id="preview" autoplay muted playsinline></video>
+
+  <select id="cameraSelect"></select>
+  <button onclick="listarCameras()">🔄 Atualizar Câmeras</button>
   <br>
-  <button id="startBtn">Iniciar Transmissão</button>
+  <button id="startBtn">🎥 Iniciar Transmissão</button>
   <p id="status">Aguardando...</p>
+
+  <video id="preview" autoplay muted playsinline></video>
 
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
     const video = document.getElementById('preview');
     const status = document.getElementById('status');
     const startBtn = document.getElementById('startBtn');
+    const cameraSelect = document.getElementById('cameraSelect');
 
-    let socket;
+    let socket, recorder;
+
+    async function listarCameras() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+      cameraSelect.innerHTML = '';
+      videoDevices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Câmera ${cameraSelect.length + 1}`;
+        cameraSelect.appendChild(option);
+      });
+    }
+
+    listarCameras();
 
     startBtn.onclick = async () => {
       startBtn.disabled = true;
       status.innerText = '🔴 Transmitindo ao vivo...';
 
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const deviceId = cameraSelect.value;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId } },
+        audio: false
+      });
+
       video.srcObject = stream;
 
       socket = io();
 
-      const recorder = new MediaRecorder(stream, {
+      recorder = new MediaRecorder(stream, {
         mimeType: 'video/webm; codecs=vp8'
       });
 
@@ -45,7 +70,7 @@
         }
       };
 
-      recorder.start(100); // envia pacotes a cada 100ms
+      recorder.start(100); // a cada 100ms
     };
   </script>
 </body>
