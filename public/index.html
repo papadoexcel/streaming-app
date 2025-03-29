@@ -1,180 +1,48 @@
-<!DOCTYPE html>
+// === public/index.html ===
+
+const htmlIndex = `<!DOCTYPE html>
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8">
   <title>Transmissão Ao Vivo</title>
   <style>
-    body {
-      background-color: #121212;
-      color: white;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 2rem;
-    }
-
-    h1 {
-      font-size: 1.8rem;
-      margin-bottom: 1rem;
-    }
-
-    video {
-      width: 100%;
-      max-width: 480px;
-      margin-top: 20px;
-      border-radius: 12px;
-      border: 2px solid #444;
-    }
-
-    select, button {
-      padding: 10px 15px;
-      font-size: 1rem;
-      margin: 10px;
-      border-radius: 8px;
-      border: none;
-      outline: none;
-    }
-
-    button {
-      background-color: #ff2d55;
-      color: white;
-      cursor: pointer;
-    }
-
-    #status {
-      margin-top: 10px;
-      font-size: 1.1rem;
-      color: #ccc;
-    }
-
-    #micStatus {
-      font-size: 0.9rem;
-      color: #bbb;
-    }
+    body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding: 2rem; }
+    video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 10px; margin-top: 20px; }
+    input, button { margin: 10px; padding: 10px; font-size: 1rem; border-radius: 8px; }
   </style>
 </head>
 <body>
-  <h1>Transmissão ao Vivo</h1>
-
-  <div>
-    <select id="cameraSelect"></select>
-    <button onclick="listarCameras()">🔄 Atualizar Câmeras</button>
-  </div>
-
-  <button id="startBtn">🎥 Iniciar Transmissão</button>
-  <button id="micToggle" style="display:none;">🎙️ Mutar Microfone</button>
-  <p id="status">Aguardando...</p>
-  <p id="micStatus"></p>
-
+  <h1>Transmissão do Dispositivo</h1>
+  <input id="nome" placeholder="Seu nome ou local" />
+  <button onclick="startStream()">Iniciar</button>
   <video id="preview" autoplay muted playsinline></video>
 
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
+    const socket = io();
     const video = document.getElementById('preview');
-    const status = document.getElementById('status');
-    const startBtn = document.getElementById('startBtn');
-    const micToggle = document.getElementById('micToggle');
-    const micStatus = document.getElementById('micStatus');
-    const cameraSelect = document.getElementById('cameraSelect');
-
-    let socket = null;
+    const nomeInput = document.getElementById('nome');
+    const id = Math.random().toString(36).substring(2, 8);
     let recorder = null;
-    let stream = null;
-    let audioTrack = null;
-    let micMuted = false;
 
-    async function pedirPermissaoInicial() {
-      try {
-        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        tempStream.getTracks().forEach(track => track.stop());
-        await listarCameras();
-      } catch (err) {
-        alert("⚠️ Permissão negada. Habilite câmera e microfone no navegador.");
-      }
-    }
+    socket.emit('set-nome', nomeInput.value || id);
 
-    async function listarCameras() {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+    async function startStream() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      video.srcObject = stream;
 
-      cameraSelect.innerHTML = '';
-      videoDevices.forEach((device, index) => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        option.text = device.label || `Câmera ${index + 1}`;
-        cameraSelect.appendChild(option);
-      });
-    }
+      socket.emit('set-nome', nomeInput.value || id);
 
-    async function iniciarStream(deviceId) {
-      try {
-        if (stream) stream.getTracks().forEach(track => track.stop());
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: deviceId } },
-          audio: true
-        });
-
-        video.srcObject = stream;
-
-        // Captura o track de áudio para mutar/desmutar
-        audioTrack = stream.getAudioTracks()[0];
-        micMuted = false;
-        atualizarStatusMic();
-        micToggle.style.display = 'inline-block';
-
-        if (!socket) {
-          socket = io();
-          socket.on('connect', () => console.log('📡 Conectado ao servidor'));
+      recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp8,opus' });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          e.data.arrayBuffer().then(buf => {
+            socket.emit('video', Buffer.from(buf));
+          });
         }
-
-        if (recorder) recorder.stop();
-
-        recorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm; codecs=vp8,opus'
-        });
-
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            event.data.arrayBuffer().then(buffer => {
-              socket.emit('video', Buffer.from(buffer));
-            });
-          }
-        };
-
-        recorder.start(100);
-        status.innerText = '🔴 Transmitindo ao vivo...';
-      } catch (err) {
-        console.error('Erro ao iniciar stream:', err);
-        alert('⚠️ Erro ao acessar câmera ou microfone.');
-        startBtn.disabled = false;
-      }
+      };
+      recorder.start(100);
     }
-
-    function atualizarStatusMic() {
-      micStatus.innerText = micMuted ? '🔇 Microfone desativado' : '🎙️ Microfone ativado';
-    }
-
-    micToggle.onclick = () => {
-      if (audioTrack) {
-        micMuted = !micMuted;
-        audioTrack.enabled = !micMuted;
-        atualizarStatusMic();
-        micToggle.innerText = micMuted ? '🎙️ Ativar Microfone' : '🔇 Mutar Microfone';
-      }
-    };
-
-    startBtn.onclick = async () => {
-      startBtn.disabled = true;
-      const selectedDeviceId = cameraSelect.value;
-      await iniciarStream(selectedDeviceId);
-    };
-
-    cameraSelect.onchange = async () => {
-      const selectedDeviceId = cameraSelect.value;
-      await iniciarStream(selectedDeviceId);
-    };
-
-    pedirPermissaoInicial();
   </script>
 </body>
-</html>
+</html>`;

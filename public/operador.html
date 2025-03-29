@@ -1,0 +1,64 @@
+// === public/operador.html ===
+
+const htmlOperador = `<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Central de Controle</title>
+  <style>
+    body { background: #1a1a1a; color: white; font-family: sans-serif; padding: 2rem; }
+    .grid { display: flex; flex-wrap: wrap; gap: 20px; }
+    .item { border: 2px solid #555; padding: 10px; border-radius: 10px; }
+    video { width: 200px; height: auto; }
+    button { margin-top: 5px; padding: 6px 10px; border-radius: 6px; background: #28a; color: white; border: none; }
+  </style>
+</head>
+<body>
+  <h1>🎛️ Central do Operador</h1>
+  <div class="grid" id="feeds"></div>
+
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+    socket.emit('join-operador');
+
+    const feeds = {};
+    const grid = document.getElementById('feeds');
+
+    socket.on('lista-dispositivos', lista => {
+      lista.forEach(({ id, nome }) => criarPreview(id, nome));
+    });
+
+    socket.on('preview', ({ id, nome, buffer }) => {
+      if (!feeds[id]) criarPreview(id, nome);
+      const blob = new Blob([buffer], { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      feeds[id].video.src = url;
+    });
+
+    socket.on('remover-dispositivo', id => {
+      if (feeds[id]) {
+        feeds[id].el.remove();
+        delete feeds[id];
+      }
+    });
+
+    function criarPreview(id, nome) {
+      const el = document.createElement('div');
+      el.className = 'item';
+      const title = document.createElement('div');
+      title.textContent = nome;
+      const video = document.createElement('video');
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+      const btn = document.createElement('button');
+      btn.textContent = 'Selecionar para transmissão';
+      btn.onclick = () => socket.emit('selecionar-dispositivo', id);
+      el.append(title, video, btn);
+      grid.appendChild(el);
+      feeds[id] = { el, video };
+    }
+  </script>
+</body>
+</html>`;
