@@ -1,76 +1,75 @@
 const express = require('express');
 const http = require('http');
-const path = require('path');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const dispositivos = {}; // { socketId: { nome, buffer, selecionado } }
+const dispositivos = new Map();
+let feedSelecionado = null;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Endpoint usado pelo ffmpeg para puxar o stream do dispositivo selecionado
 app.get('/buffer', (req, res) => {
-  const selecionado = Object.values(dispositivos).find(d => d.selecionado && d.buffer);
-  if (!selecionado) return res.status(204).end();
-  res.setHeader('Content-Type', 'video/webm');
-  res.send(selecionado.buffer);
+  if (feedSelecionado && dispositivos.has(feedSelecionado)) {
+    res.setHeader('Content-Type', 'video/webm');
+    dispositivos.get(feedSelecionado).previewStream.pipe(res);
+  } else {
+    res.status(204).end();
+  }
 });
 
 io.on('connection', (socket) => {
-  console.log('📡 Novo cliente conectado:', socket.id);
+  console.log(`📲 Novo socket conectado: ${socket.id}`);
 
-  socket.on('set-nome', (nome) => {
-    dispositivos[socket.id] = {
-      id: socket.id,
-      nome: nome || socket.id,
-      buffer: null,
-      selecionado: false
-    };
-    console.log(`✅ Dispositivo registrado: ${nome}`);
-    atualizarLista();
-  });
-
-  socket.on('video', (buffer) => {
-    if (dispositivos[socket.id]) {
-      dispositivos[socket.id].buffer = buffer;
-      io.to('operador').emit('preview', {
-        id: socket.id,
-        nome: dispositivos[socket.id].nome,
-        buffer
-      });
-    }
+  socket.on('join-dispositivo', (nome) => {
+    console.log(`📱 Dispositivo conectado: ${nome}`);
+    dispositivos.set(socket.id, { nome, previewStream: null });
+    io.to('operadores').emit('lista-dispositivos', listarDispositivos());
   });
 
   socket.on('join-operador', () => {
-    socket.join('operador');
-    console.log('🎛️ Operador conectado');
-    const lista = Object.values(dispositivos).map(({ id, nome }) => ({ id, nome }));
-    socket.emit('lista-dispositivos', lista);
+    socket.join('operadores');
+    socket.emit('lista-dispositivos', listarDispositivos());
   });
 
-  socket.on('selecionar-dispositivo', (idSelecionado) => {
-    Object.keys(dispositivos).forEach(id => {
-      dispositivos[id].selecionado = (id === idSelecionado);
-    });
-    console.log(`🎯 Dispositivo selecionado para transmissão: ${idSelecionado}`);
-  });
+  socket.on('preview', (data) => {
+    if (dispositivos.has(socket.id)) {
+      const buffer = Buffer.from(data);
+      dispositivos.get(socket.id).previewStream = require('stream').Readable.from([buffer]);
+      io.to('operadores').emit('preview', {
+        id: socket.id,
+        nome: dispositivos.get(socket.id).nome,
+        buffer
+      });
 
-  socket.on('disconnect', () => {
-    if (dispositivos[socket.id]) {
-      console.log(`❌ Dispositivo desconectado: ${dispositivos[socket.id].nome}`);
-      delete dispositivos[socket.id];
-      io.to('operador').emit('remover-dispositivo', socket.id);
+      // 👇 Seleção automática do primeiro feed disponível
+      if (!feedSelecionado) {
+        console.log(`🎯 Selecionando automaticamente: ${socket.id}`);
+        feedSelecionado = socket.id;
+      }
     }
   });
 
-  function atualizarLista() {
-    const lista = Object.values(dispositivos).map(({ id, nome }) => ({ id, nome }));
-    io.to('operador').emit('lista-dispositivos', lista);
-  }
+  socket.on('selecionar-dispositivo', (id) => {
+    feedSelecionado = id;
+    console.log(`🎯 Dispositivo selecionado manualmente: ${id}`);
+  });
+
+  socket.on('disconnect', () => {
+    dispositivos.delete(socket.id);
+    if (feedSelecionado === socket.id) {
+      feedSelecionado = null;
+    }
+    io.to('operadores').emit('remover-dispositivo', socket.id);
+  });
 });
+
+function listarDispositivos() {
+  return Array.from(dispositivos.entries()).map(([id, { nome }]) => ({ id, nome }));
+}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
