@@ -96,9 +96,10 @@
         }
 
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: deviceId } },
-          audio: false
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: true
         });
+
 
         video.srcObject = stream;
 
