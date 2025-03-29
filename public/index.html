@@ -31,11 +31,11 @@
     .controls {
       position: fixed;
       bottom: 20px;
-      right: 20px;
+      left: 0;
+      right: 0;
       display: flex;
-      flex-direction: column;
-      gap: 15px;
-      align-items: flex-end;
+      justify-content: center;
+      gap: 20px;
     }
     .btn {
       background: #28a745;
@@ -48,7 +48,9 @@
       box-shadow: 0 4px 8px rgba(0,0,0,0.3);
       cursor: pointer;
     }
-    .btn.camera { background: #007bff; }
+    .btn.camera {
+      background: #007bff;
+    }
   </style>
 </head>
 <body>
@@ -72,16 +74,19 @@
     let streamAtual = null;
 
     async function startStream() {
-      if (streamAtual) {
-        streamAtual.getTracks().forEach(t => t.stop());
-      }
-
-      const constraints = {
-        video: { facingMode: currentFacingMode },
-        audio: true
-      };
-
       try {
+        // Para evitar bugs na troca de câmera
+        if (streamAtual) {
+          streamAtual.getTracks().forEach(track => track.stop());
+          streamAtual = null;
+          video.srcObject = null;
+        }
+
+        const constraints = {
+          video: { facingMode: currentFacingMode },
+          audio: true
+        };
+
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         streamAtual = stream;
@@ -99,6 +104,7 @@
         recorder.start(100);
       } catch (e) {
         alert("Erro ao acessar câmera/microfone: " + e.message);
+        console.error(e);
       }
     }
 
