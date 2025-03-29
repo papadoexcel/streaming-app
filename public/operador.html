@@ -53,19 +53,22 @@
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
     const socket = io({
-    transports: ['websocket']
+      transports: ['websocket']
     });
 
     socket.emit('join-operador');
+    console.log("✅ Operador conectado");
 
     const feeds = {};
     const grid = document.getElementById('feeds');
 
     socket.on('lista-dispositivos', lista => {
+      console.log("📡 Recebida lista de dispositivos:", lista);
       lista.forEach(({ id, nome }) => criarPreview(id, nome));
     });
 
     socket.on('preview', ({ id, nome, buffer }) => {
+      console.log(`📷 Preview recebido de ${nome}`);
       if (!feeds[id]) criarPreview(id, nome);
       const blob = new Blob([buffer], { type: 'video/webm' });
       const url = URL.createObjectURL(blob);
