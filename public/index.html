@@ -71,6 +71,17 @@
     let recorder = null;
     let stream = null;
 
+    async function pedirPermissaoInicial() {
+      try {
+        // Captura qualquer câmera só para pedir permissão
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        tempStream.getTracks().forEach(track => track.stop());
+        await listarCameras();
+      } catch (err) {
+        alert("⚠️ Não foi possível acessar a câmera. Permita o uso da câmera no navegador.");
+      }
+    }
+
     async function listarCameras() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -85,7 +96,7 @@
         });
       } catch (err) {
         console.error('Erro ao listar câmeras:', err);
-        alert('Não foi possível acessar as câmeras. Verifique as permissões do navegador.');
+        alert('Não foi possível listar as câmeras.');
       }
     }
 
@@ -96,10 +107,9 @@
         }
 
         stream = await navigator.mediaDevices.getUserMedia({
-        video: deviceId ? { deviceId: { exact: deviceId } } : true,
-        audio: true
+          video: { deviceId: { exact: deviceId } },
+          audio: false
         });
-
 
         video.srcObject = stream;
 
@@ -130,7 +140,7 @@
         status.innerText = '🔴 Transmitindo ao vivo...';
       } catch (err) {
         console.error('Erro ao iniciar stream:', err);
-        alert('Erro ao iniciar a câmera. Verifique as permissões ou tente outro dispositivo.');
+        alert('⚠️ Erro ao iniciar a câmera. Tente outra opção ou verifique permissões.');
         startBtn.disabled = false;
       }
     }
@@ -141,13 +151,13 @@
       await iniciarStream(selectedDeviceId);
     };
 
-    cameraSelect.onchange = () => {
+    cameraSelect.onchange = async () => {
       const selectedDeviceId = cameraSelect.value;
-      iniciarStream(selectedDeviceId);
+      await iniciarStream(selectedDeviceId);
     };
 
-    // Inicializa lista ao carregar a página
-    listarCameras();
+    // 🚀 Ao carregar a página, pedir permissão
+    pedirPermissaoInicial();
   </script>
 </body>
 </html>
