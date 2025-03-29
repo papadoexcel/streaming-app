@@ -1,4 +1,3 @@
-
 const https = require('https');
 const { spawn } = require('child_process');
 
