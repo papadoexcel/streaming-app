@@ -1,50 +1,68 @@
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
-const { spawn } = require('child_process');
-const fs = require('fs');
+const socketio = require('socket.io');
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = socketio(server);
 
-const RTMP_URL = 'rtmp://a.rtmp.youtube.com/live2/550u-qa5d-a0xv-gthd-f1qa';
+const PORT = process.env.PORT || 3000;
 
+// Servir os arquivos da pasta public
 app.use(express.static(path.join(__dirname, 'public')));
 
-io.on('connection', (socket) => {
-  console.log('📲 Novo dispositivo conectado!');
+let dispositivos = {};
+let dispositivoSelecionado = null;
 
-  let ffmpeg = spawn('ffmpeg', [
-    '-re',
-    '-i', 'pipe:0',
-    '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-tune', 'zerolatency',
-    '-f', 'flv',
-    RTMP_URL
-  ]);
+// Rota do buffer para o ffmpeg
+let ultimoBuffer = null;
+app.get('/buffer', (req, res) => {
+  if (ultimoBuffer) {
+    res.setHeader('Content-Type', 'video/webm');
+    res.end(ultimoBuffer);
+  } else {
+    res.status(204).end();
+  }
+});
 
-  ffmpeg.stderr.on('data', (data) => {
-    console.log(`FFmpeg log: ${data}`);
+// Socket.io
+io.on('connection', socket => {
+  console.log('Novo socket conectado:', socket.id);
+
+  socket.on('set-nome', nome => {
+    dispositivos[socket.id] = { id: socket.id, nome };
+    io.emit('lista-dispositivos', Object.values(dispositivos));
   });
 
-  ffmpeg.on('close', () => {
-    console.log('FFmpeg finalizado');
+  socket.on('video', buffer => {
+    if (socket.id === dispositivoSelecionado) {
+      ultimoBuffer = buffer;
+    }
+
+    io.emit('preview', {
+      id: socket.id,
+      nome: dispositivos[socket.id]?.nome || 'Desconhecido',
+      buffer
+    });
   });
 
-  socket.on('video', (data) => {
-    ffmpeg.stdin.write(data);
+  socket.on('join-operador', () => {
+    socket.emit('lista-dispositivos', Object.values(dispositivos));
+  });
+
+  socket.on('selecionar-dispositivo', id => {
+    dispositivoSelecionado = id;
+    console.log('Dispositivo selecionado:', id);
   });
 
   socket.on('disconnect', () => {
-    console.log('❌ Dispositivo desconectado');
-    ffmpeg.stdin.end();
-    ffmpeg.kill('SIGINT');
+    delete dispositivos[socket.id];
+    io.emit('remover-dispositivo', socket.id);
   });
 });
 
-server.listen(3000, () => {
-  console.log('✅ Servidor rodando em http://localhost:3000');
+// Inicia o servidor
+server.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
