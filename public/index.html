@@ -45,6 +45,11 @@
       font-size: 1.1rem;
       color: #ccc;
     }
+
+    #micStatus {
+      font-size: 0.9rem;
+      color: #bbb;
+    }
   </style>
 </head>
 <body>
@@ -56,7 +61,9 @@
   </div>
 
   <button id="startBtn">🎥 Iniciar Transmissão</button>
+  <button id="micToggle" style="display:none;">🎙️ Mutar Microfone</button>
   <p id="status">Aguardando...</p>
+  <p id="micStatus"></p>
 
   <video id="preview" autoplay muted playsinline></video>
 
@@ -65,67 +72,65 @@
     const video = document.getElementById('preview');
     const status = document.getElementById('status');
     const startBtn = document.getElementById('startBtn');
+    const micToggle = document.getElementById('micToggle');
+    const micStatus = document.getElementById('micStatus');
     const cameraSelect = document.getElementById('cameraSelect');
 
     let socket = null;
     let recorder = null;
     let stream = null;
+    let audioTrack = null;
+    let micMuted = false;
 
     async function pedirPermissaoInicial() {
       try {
-        // Captura qualquer câmera só para pedir permissão
-        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         tempStream.getTracks().forEach(track => track.stop());
         await listarCameras();
       } catch (err) {
-        alert("⚠️ Não foi possível acessar a câmera. Permita o uso da câmera no navegador.");
+        alert("⚠️ Permissão negada. Habilite câmera e microfone no navegador.");
       }
     }
 
     async function listarCameras() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
-        cameraSelect.innerHTML = '';
-        videoDevices.forEach((device, index) => {
-          const option = document.createElement('option');
-          option.value = device.deviceId;
-          option.text = device.label || `Câmera ${index + 1}`;
-          cameraSelect.appendChild(option);
-        });
-      } catch (err) {
-        console.error('Erro ao listar câmeras:', err);
-        alert('Não foi possível listar as câmeras.');
-      }
+      cameraSelect.innerHTML = '';
+      videoDevices.forEach((device, index) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Câmera ${index + 1}`;
+        cameraSelect.appendChild(option);
+      });
     }
 
     async function iniciarStream(deviceId) {
       try {
-        if (stream) {
-          stream.getTracks().forEach(track => track.stop());
-        }
+        if (stream) stream.getTracks().forEach(track => track.stop());
 
         stream = await navigator.mediaDevices.getUserMedia({
           video: { deviceId: { exact: deviceId } },
-          audio: false
+          audio: true
         });
 
         video.srcObject = stream;
 
+        // Captura o track de áudio para mutar/desmutar
+        audioTrack = stream.getAudioTracks()[0];
+        micMuted = false;
+        atualizarStatusMic();
+        micToggle.style.display = 'inline-block';
+
         if (!socket) {
           socket = io();
-          socket.on('connect', () => {
-            console.log('📡 Conectado ao servidor');
-          });
+          socket.on('connect', () => console.log('📡 Conectado ao servidor'));
         }
 
-        if (recorder) {
-          recorder.stop();
-        }
+        if (recorder) recorder.stop();
 
         recorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm; codecs=vp8'
+          mimeType: 'video/webm; codecs=vp8,opus'
         });
 
         recorder.ondataavailable = (event) => {
@@ -140,10 +145,23 @@
         status.innerText = '🔴 Transmitindo ao vivo...';
       } catch (err) {
         console.error('Erro ao iniciar stream:', err);
-        alert('⚠️ Erro ao iniciar a câmera. Tente outra opção ou verifique permissões.');
+        alert('⚠️ Erro ao acessar câmera ou microfone.');
         startBtn.disabled = false;
       }
     }
+
+    function atualizarStatusMic() {
+      micStatus.innerText = micMuted ? '🔇 Microfone desativado' : '🎙️ Microfone ativado';
+    }
+
+    micToggle.onclick = () => {
+      if (audioTrack) {
+        micMuted = !micMuted;
+        audioTrack.enabled = !micMuted;
+        atualizarStatusMic();
+        micToggle.innerText = micMuted ? '🎙️ Ativar Microfone' : '🔇 Mutar Microfone';
+      }
+    };
 
     startBtn.onclick = async () => {
       startBtn.disabled = true;
@@ -156,7 +174,6 @@
       await iniciarStream(selectedDeviceId);
     };
 
-    // 🚀 Ao carregar a página, pedir permissão
     pedirPermissaoInicial();
   </script>
 </body>
