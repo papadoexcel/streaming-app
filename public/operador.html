@@ -29,6 +29,10 @@
       background: #2a2a2a;
       max-width: 240px;
       text-align: center;
+      transition: border-color 0.3s;
+    }
+    .item.selecionado {
+      border-color: limegreen;
     }
     video {
       width: 100%;
@@ -52,9 +56,7 @@
 
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
-    const socket = io({
-      transports: ['websocket']
-    });
+    const socket = io({ transports: ['websocket'] });
 
     socket.emit('join-operador');
     console.log("✅ Operador conectado");
@@ -85,15 +87,23 @@
     function criarPreview(id, nome) {
       const el = document.createElement('div');
       el.className = 'item';
+
       const title = document.createElement('div');
       title.textContent = nome;
+
       const video = document.createElement('video');
       video.autoplay = true;
       video.muted = true;
       video.playsInline = true;
+
       const btn = document.createElement('button');
       btn.textContent = 'Selecionar para transmissão';
-      btn.onclick = () => socket.emit('selecionar-dispositivo', id);
+      btn.onclick = () => {
+        socket.emit('selecionar-dispositivo', id);
+        document.querySelectorAll('.item').forEach(item => item.classList.remove('selecionado'));
+        el.classList.add('selecionado');
+      };
+
       el.append(title, video, btn);
       grid.appendChild(el);
       feeds[id] = { el, video };
