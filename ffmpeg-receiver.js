@@ -1,13 +1,12 @@
-// === ffmpeg-receiver.js ===
 
-const http = require('http');
+const https = require('https');
 const { spawn } = require('child_process');
 
 const YOUTUBE_URL = 'rtmp://a.rtmp.youtube.com/live2';
 const STREAM_KEY = '550u-qa5d-a0xv-gthd-f1qa'; // substitua por sua chave real
 
 setInterval(() => {
-  http.get('http://localhost:3000/buffer', res => {
+  https.get('https://streaming-app-xxxxx.onrender.com/buffer', res => {
     if (res.statusCode === 200) {
       const ffmpeg = spawn('ffmpeg', [
         '-re',
