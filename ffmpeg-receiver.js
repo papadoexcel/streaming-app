@@ -6,7 +6,7 @@ const YOUTUBE_URL = 'rtmp://a.rtmp.youtube.com/live2';
 const STREAM_KEY = '550u-qa5d-a0xv-gthd-f1qa'; // substitua por sua chave real
 
 setInterval(() => {
-  https.get('https://streaming-app-xxxxx.onrender.com/buffer', res => {
+  https.get('https://streaming-app-65vx.onrender.com/buffer', res => {
     if (res.statusCode === 200) {
       const ffmpeg = spawn('ffmpeg', [
         '-re',
