@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const { Readable } = require('stream');
 
 const app = express();
 const server = http.createServer(app);
@@ -38,14 +39,14 @@ io.on('connection', (socket) => {
   socket.on('preview', (data) => {
     if (dispositivos.has(socket.id)) {
       const buffer = Buffer.from(data);
-      dispositivos.get(socket.id).previewStream = require('stream').Readable.from([buffer]);
+      dispositivos.get(socket.id).previewStream = Readable.from([buffer]);
+
       io.to('operadores').emit('preview', {
         id: socket.id,
         nome: dispositivos.get(socket.id).nome,
         buffer
       });
 
-      // 👇 Seleção automática do primeiro feed disponível
       if (!feedSelecionado) {
         console.log(`🎯 Selecionando automaticamente: ${socket.id}`);
         feedSelecionado = socket.id;
@@ -59,6 +60,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    console.log(`❌ Dispositivo desconectado: ${socket.id}`);
     dispositivos.delete(socket.id);
     if (feedSelecionado === socket.id) {
       feedSelecionado = null;
@@ -71,7 +73,7 @@ function listarDispositivos() {
   return Array.from(dispositivos.entries()).map(([id, { nome }]) => ({ id, nome }));
 }
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
 });

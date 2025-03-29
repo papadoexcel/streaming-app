@@ -29,10 +29,10 @@
       background: #2a2a2a;
       max-width: 240px;
       text-align: center;
-      transition: border-color 0.3s;
     }
     .item.selecionado {
-      border-color: limegreen;
+      border-color: #0f0;
+      background: #233;
     }
     video {
       width: 100%;
@@ -57,20 +57,17 @@
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
     const socket = io({ transports: ['websocket'] });
-
     socket.emit('join-operador');
-    console.log("✅ Operador conectado");
 
     const feeds = {};
+    let selecionado = null;
     const grid = document.getElementById('feeds');
 
     socket.on('lista-dispositivos', lista => {
-      console.log("📡 Recebida lista de dispositivos:", lista);
       lista.forEach(({ id, nome }) => criarPreview(id, nome));
     });
 
     socket.on('preview', ({ id, nome, buffer }) => {
-      console.log(`📷 Preview recebido de ${nome}`);
       if (!feeds[id]) criarPreview(id, nome);
       const blob = new Blob([buffer], { type: 'video/webm' });
       const url = URL.createObjectURL(blob);
@@ -87,26 +84,28 @@
     function criarPreview(id, nome) {
       const el = document.createElement('div');
       el.className = 'item';
-
       const title = document.createElement('div');
       title.textContent = nome;
-
       const video = document.createElement('video');
       video.autoplay = true;
       video.muted = true;
       video.playsInline = true;
-
       const btn = document.createElement('button');
       btn.textContent = 'Selecionar para transmissão';
       btn.onclick = () => {
+        selecionado = id;
         socket.emit('selecionar-dispositivo', id);
-        document.querySelectorAll('.item').forEach(item => item.classList.remove('selecionado'));
-        el.classList.add('selecionado');
+        atualizarDestaques();
       };
-
       el.append(title, video, btn);
       grid.appendChild(el);
       feeds[id] = { el, video };
+    }
+
+    function atualizarDestaques() {
+      for (const id in feeds) {
+        feeds[id].el.classList.toggle('selecionado', id === selecionado);
+      }
     }
   </script>
 </body>

@@ -2,132 +2,124 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
-  <title>Transmissão Ao Vivo</title>
+  <title>Dispositivo de Transmissão</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
-      background: #121212;
+      margin: 0;
+      background: #111;
       color: white;
       font-family: sans-serif;
-      text-align: center;
-      padding: 2rem;
-      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
     }
     video {
       width: 100%;
       max-width: 480px;
-      border: 2px solid #444;
       border-radius: 10px;
-      margin-top: 20px;
-    }
-    input {
-      margin: 10px;
-      padding: 10px;
-      font-size: 1rem;
-      border-radius: 8px;
-      width: 90%;
-      max-width: 300px;
     }
     .controls {
-      position: fixed;
-      bottom: 20px;
-      left: 0;
-      right: 0;
       display: flex;
-      justify-content: center;
-      gap: 20px;
+      gap: 1rem;
+      margin-top: 1rem;
       flex-wrap: wrap;
+      justify-content: center;
     }
-    .btn {
-      background: #28a745;
-      color: white;
+    button {
+      padding: 10px 20px;
       border: none;
-      border-radius: 50%;
-      width: 60px;
-      height: 60px;
-      font-size: 24px;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      background: #28a;
+      color: white;
+      border-radius: 6px;
       cursor: pointer;
     }
-    .btn.camera { background: #007bff; }
-    .btn.audio  { background: #dc3545; }
+    input {
+      margin-bottom: 1rem;
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      width: 100%;
+      max-width: 400px;
+    }
   </style>
 </head>
 <body>
-  <h1>Transmissão do Dispositivo</h1>
-  <input id="nome" placeholder="Seu nome ou local" />
+  <h2>📱 Transmissão ao Vivo</h2>
+  <input id="nome" placeholder="Digite seu nome" />
   <video id="preview" autoplay muted playsinline></video>
-
   <div class="controls">
-    <button class="btn" onclick="startStream()">▶</button>
-    <button class="btn camera" onclick="toggleCamera()">🔄</button>
-    <button class="btn audio" onclick="toggleAudio()" id="btnAudio">🎤</button>
+    <button id="start">▶ Transmitir</button>
+    <button id="flip">🔄 Trocar Câmera</button>
+    <button id="mute">🔇 Áudio</button>
   </div>
 
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script>
-    const socket = io();
+    const socket = io({ transports: ['websocket'] });
     const video = document.getElementById('preview');
+    const startBtn = document.getElementById('start');
+    const flipBtn = document.getElementById('flip');
+    const muteBtn = document.getElementById('mute');
     const nomeInput = document.getElementById('nome');
-    const btnAudio = document.getElementById('btnAudio');
-    const id = Math.random().toString(36).substring(2, 8);
-    let recorder = null;
-    let currentFacingMode = 'user';
-    let streamAtual = null;
-    let audioAtivo = true;
 
-    async function startStream() {
+    let stream;
+    let videoTrackIndex = 0;
+    let audioMuted = false;
+
+    async function iniciarCamera() {
       try {
-        if (streamAtual) {
-          streamAtual.getTracks().forEach(track => track.stop());
-          streamAtual = null;
-          video.srcObject = null;
-        }
-
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
         const constraints = {
-          video: { facingMode: currentFacingMode },
+          video: { deviceId: videoDevices[videoTrackIndex % videoDevices.length]?.deviceId },
           audio: true
         };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
-        streamAtual = stream;
-
-        audioAtivo = true;
-        btnAudio.textContent = '🎤';
-
-        socket.emit('set-nome', nomeInput.value || id);
-
-        recorder = new MediaRecorder(stream);
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) {
-            e.data.arrayBuffer().then(buf => {
-              socket.emit('video', Buffer.from(buf));
-            });
-          }
-        };
-        recorder.start(100);
-      } catch (e) {
-        alert("Erro ao acessar câmera/microfone: " + e.message);
-        console.error(e);
+      } catch (err) {
+        alert("Erro ao acessar a câmera/microfone: " + err.message);
       }
     }
 
-    function toggleCamera() {
-      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      startStream();
-    }
+    iniciarCamera();
 
-    function toggleAudio() {
-      if (!streamAtual) return;
-
-      const audioTracks = streamAtual.getAudioTracks();
-      if (audioTracks.length > 0) {
-        audioAtivo = !audioAtivo;
-        audioTracks.forEach(track => track.enabled = audioAtivo);
-        btnAudio.textContent = audioAtivo ? '🎤' : '🔇';
+    flipBtn.onclick = () => {
+      videoTrackIndex++;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
       }
-    }
+      iniciarCamera();
+    };
+
+    muteBtn.onclick = () => {
+      if (!stream) return;
+      audioMuted = !audioMuted;
+      stream.getAudioTracks().forEach(track => track.enabled = !audioMuted);
+      muteBtn.textContent = audioMuted ? '🔈 Ativar Áudio' : '🔇 Áudio';
+    };
+
+    startBtn.onclick = () => {
+      const nome = nomeInput.value.trim();
+      if (!nome) return alert("Digite seu nome");
+
+      socket.emit('join-dispositivo', nome);
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          e.data.arrayBuffer().then(buf => {
+            socket.emit('preview', new Uint8Array(buf));
+          });
+        }
+      };
+
+      mediaRecorder.start(1000);
+      startBtn.disabled = true;
+      startBtn.textContent = "Transmitindo...";
+    };
   </script>
 </body>
 </html>
